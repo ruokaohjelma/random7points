@@ -1,4 +1,3 @@
-// script.js
 const cards = [
     "4Uancestralrecall", "3Ubraingeyser", "3Rdisintegrate", "3Rfireball",
     "3Bdemonictutor", "3Bmindtwist", "3Aloa", "3Asolring", "2Ucontrolmagic",
@@ -14,7 +13,9 @@ let selected = [];
 let totalPoints = 0;
 let colors = new Set();
 let moxCards = [];
-let karakasSelected = false;
+let lastMoxColor = null; // Keep track of the last Mox card color
+let nextCardMustMatchColor = false; // Flag for ensuring the next card matches the Mox color
+let whiteCardSelected = false; // Flag to track if a white card has been selected
 
 // Get the points of a card
 function getPoints(card) {
@@ -32,61 +33,73 @@ function drawCard() {
 
     let availableCards = cards.filter(card => {
         let color = getColor(card);
-        return colors.size < 3 || colors.has(color) || color === 'A';
+        return !selected.includes(card); // Ensure no duplicate cards
     });
 
     if (availableCards.length === 0) return; // Prevent empty selection
 
+    let card = null;
+    
+    if (nextCardMustMatchColor) {
+        // If next card must match color, pick cards of the same color
+        availableCards = availableCards.filter(c => getColor(c) === lastMoxColor || getColor(c) === 'G');
+        if (availableCards.length === 0) {
+            drawCard(); // No valid options, recurse
+            return;
+        }
+    }
+
+    // If Mox is Green, 50/50 chance for the next color match
+    if (lastMoxColor === 'G' && Math.random() < 0.5) {
+        availableCards = availableCards.filter(c => getColor(c) === 'G' || !selected.includes(c));
+    }
+
+    // Check if the card is Karakas and if the white card condition is met
+    availableCards = availableCards.filter(card => {
+        if (card.includes("karakas") && !whiteCardSelected) {
+            return false; // Prevent Karakas if no white card has been selected
+        }
+        return true;
+    });
+
     let randomIndex = Math.floor(Math.random() * availableCards.length);
-    let card = availableCards[randomIndex];
+    card = availableCards[randomIndex];
+    
     let points = getPoints(card);
     let color = getColor(card);
 
-    // Handle Karakas rule
-    if (card.includes("karakas")) {
-        if (!checkKarakasRule()) {
-            drawCard(); // Recurse to draw a new card if Karakas doesn't pass
-            return;
-        }
-        karakasSelected = true;
-    }
-
-    // Handle Mox cards
+    // If Mox card is selected, update tracking variables
     if (card.includes("mox")) {
         moxCards.push(card);
-        if (colors.size === 0 || colors.has(color)) {
-            colors.add(color);
-        } else {
-            return; // Prevent adding Mox card if color exceeds 3
+        lastMoxColor = color; // Set the color of the last selected Mox
+        nextCardMustMatchColor = true; // Ensure the next card matches this color
+        if (color === 'W') {
+            whiteCardSelected = true; // Mark white card as selected if it's a white Mox
         }
+    } else if (color === 'W') {
+        whiteCardSelected = true; // Mark white card as selected if it's any white card
+    } else {
+        nextCardMustMatchColor = false; // Reset flag if non-Mox card is drawn
     }
 
     // Add card if points don't exceed limit
     if (totalPoints + points <= 7) {
         selected.push(card);
         totalPoints += points;
-        colors.add(color);
+    }
+
+    // If the last card is a Mox and any previous cards don't match, redraw the last Mox
+    if (selected.length >= 2 && card.includes("mox") && selected.length === 7) {
+        let isValid = selected.every(c => getColor(c) === lastMoxColor || getColor(c) === 'G');
+        if (!isValid) {
+            selected.pop(); // Remove the last Mox
+            totalPoints -= points; // Subtract its points
+            drawCard(); // Redraw the Mox card
+            return;
+        }
     }
 
     displayCards();
-}
-
-// Check Karakas rule
-function checkKarakasRule() {
-    let whiteCards = selected.filter(c => getColor(c) === 'W').length;
-    let nonWhiteCards = selected.length - whiteCards;
-
-    // If Karakas is the third card and previous two are not both white, reject Karakas
-    if (selected.length >= 3 && selected.slice(0, 2).filter(c => getColor(c) !== 'W').length >= 2) {
-        return false;
-    }
-
-    // If there are fewer than 2 white cards after Karakas, reject Karakas
-    if (whiteCards < 2) {
-        return false;
-    }
-
-    return true;
 }
 
 // Reset game
@@ -95,7 +108,9 @@ function resetGame() {
     totalPoints = 0;
     colors.clear();
     moxCards = [];
-    karakasSelected = false;
+    lastMoxColor = null; // Reset last Mox color
+    nextCardMustMatchColor = false; // Reset flag
+    whiteCardSelected = false; // Reset white card selection flag
     displayCards();
 }
 
